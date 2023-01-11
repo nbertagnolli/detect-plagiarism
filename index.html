@@ -155,7 +155,7 @@
             divInit.innerHTML += `<br> Downloaded vocab from ${URL_VOCAB}`;
             const merges = await (await fetch(URL_MERGES)).text();
             divInit.innerHTML += `<br> Downloaded merges from ${URL_MERGES}`;
-            const py_code = await (await fetch("encoder.py")).text();
+            const py_code = await (await fetch("https://raw.githubusercontent.com/nbertagnolli/detect-plagiarism/master/encoder.py")).text();
             // document.querySelector(".js-code").textContent = py_code;
             divInit.innerHTML += `<br> Downloaded python code from present repo`;
 
