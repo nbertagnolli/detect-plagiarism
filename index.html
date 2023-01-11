@@ -155,7 +155,7 @@
             divInit.innerHTML += `<br> Downloaded vocab from ${URL_VOCAB}`;
             const merges = await (await fetch(URL_MERGES)).text();
             divInit.innerHTML += `<br> Downloaded merges from ${URL_MERGES}`;
-            const py_code = await (await fetch("http://localhost:8000/encoder.py")).text();
+            const py_code = await (await fetch("encoder.py")).text();
             // document.querySelector(".js-code").textContent = py_code;
             divInit.innerHTML += `<br> Downloaded python code from present repo`;
 
@@ -164,7 +164,7 @@
             });
             divInit.innerHTML += `<br> Initialized Pyodide`;
 
-            const session = await ort.InferenceSession.create('http://localhost:8000/model-quantized.onnx');
+            const session = await ort.InferenceSession.create('http://localhost:8000/models/distilgpt.onnx');
             divInit.innerHTML += `<br> Loaded Model`;
 
 
