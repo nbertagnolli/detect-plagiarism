@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.19.1/full/pyodide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+
+<body>
+    <div class="container mx-auto px-4">
+        <h1 class="text-3xl mt-6 font-bold">
+            🤖 AI Plagarism Detection 🤖
+        </h1>
+        <h2 class="text-gray">This model will calculate the perplexity of a given text based on distilgpt. This can be
+            used to determine if a given text comes from a human or a model.</h2>
+        <div class="text-sm text-gray-800">App based on Julien Chaumond's work <a
+                href="https://huggingface.co/spaces/pyodide-demo/gpt2-tokenizer/blob/dd83ef4b54c44bdc742330a7cd05fc818baab34f/index.html">here</a>.
+        </div>
+        <div class="text-xs text-green-800 mt-4 js-init">Initialization: ...</div>
+        <div class="flex gap-6 mt-10">
+            <div class="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-200/60">
+                <textarea id="input-textareabox" type="text" placeholder="Enter your sentence…"
+                    class="w-full py-3 px-6 text-input" rows="7"></textarea>
+
+                <div class="flex gap-4 my-4">
+                    <button
+                        class="js-clear bg-gray-50 flex-1 p-3 rounded font-semibold focus:outline-none">Clear</button>
+                    <button
+                        class="js-submt bg-indigo-200 flex-1 p-3 rounded font-semibold focus:outline-none">Submit</button>
+                </div>
+            </div>
+        </div>
+        <div class="flex gap-6 mt-10">
+            <div class="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-200/60">
+                <textarea placeholder="Output" class="w-full py-3 px-6 font-mono text-output"></textarea>
+            </div>
+        </div>
+
+        <!-- <h4 class="text-xs mt-10 mb-1">Python code being run:</h4> -->
+        <!-- <pre class="js-code text-gray-500 text-xs bg-gray-50 p-4 rounded-xl border border-gray-200/60"></pre> -->
+    </div>
+    <script type="text/javascript">
+        const divInit = document.querySelector(".js-init");
+        const btnClear = document.querySelector(".js-clear");
+        const btnSubmt = document.querySelector(".js-submt");
+        const inputField = document.querySelector(".text-input");
+        inputField.value = "Place the text you want to analyze here.";  // Default text to start
+        const URL_VOCAB = "https://huggingface.co/gpt2/resolve/main/vocab.json";
+        const URL_MERGES = "https://huggingface.co/gpt2/resolve/main/merges.txt";
+
+        /*
+        * Reshapes arr to multidemensional array of size rows x cols
+        **/
+        Array.prototype.reshape = function (rows, cols) {
+            var copy = this.slice(0); // Copy all elements.
+            this.length = 0; // Clear out existing array.
+
+            for (var r = 0; r < rows; r++) {
+                var row = [];
+                for (var c = 0; c < cols; c++) {
+                    var i = r * cols + c;
+                    if (i < copy.length) {
+                        row.push(copy[i]);
+                    }
+                }
+                this.push(row);
+            }
+        };
+
+        /*
+        * Calculate the softmax of the logits.
+        */
+        function softmax(logits) {
+            const maxLogit = Math.max(...logits);
+            const scores = logits.map(l => Math.exp(l - maxLogit));
+            const denom = scores.reduce((a, b) => a + b);
+            return scores.map(s => s / denom);
+        }
+        /*
+        * Calculate the cross entropy loss of the predictions versus the true words.
+        */
+        function crossEntropyLoss(predictions, labels) {
+            let loss = 0;
+            for (let i = 0; i < predictions.length; i++) {
+                loss -= Math.log(predictions[i][labels[i]]);
+            }
+            return loss / predictions.length;
+        }
+
+        /**
+         * Calculates the perplexity over the entire dataset
+         * 
+         */
+        async function calculatePerplexity(session, data, stride, seqLength) {
+
+
+        }
+
+        /**
+         * data is the encoded output.
+        */
+        async function runModel(session, data) {
+
+            // Create the input for the model all inputs need to be mapped to BigInts to
+            // Accomodate int64 type in ConstantOfShape and input layers.
+            const inputData = data.map(x => BigInt(x));
+            const tensorA = new ort.Tensor('int64', inputData, [1, data.length]);
+            const feeds = { "input_ids": tensorA };
+
+            // run the model on the input
+            const results = await session.run(feeds);
+
+            // Get the output by name from the results in this case its `logits`.
+            const output = results[session.outputNames[0]];
+
+            // convert flat output to matrix of size dim
+            const predsArr = Array.prototype.slice.call(output.data);
+            predsArr.reshape(output.dims[1], output.dims[2]);
+
+            // Apply softmax over the reshaped array
+            const softmaxPreds = predsArr.map(l => softmax(l));
+
+            // Calculate CrossEntropyLoss
+            const loss = crossEntropyLoss(softmaxPreds.slice(0, -1), inputData.slice(1));
+
+            // Calculate CrossEntropyLoss
+            return Math.exp(loss);
+        }
+
+        function applyMachineHumanCuttoff(perplexity) {
+            // TODO:: Determine cutoff using generated samples from 20 news corpus.
+            // Simple heuristic to determine a cutoff for a machine vs human.
+            var species = "a MACHINE";
+            if (perplexity > 100) {
+                species = "a HUMAN";
+            } else if (perplexity > 70 & perplexity < 100) {
+                species = "Either it's hard to say";
+            }
+            return species;
+        }
+
+        // TODO:: Define stride, maxLength, sequenceLength, and iterate over the input sequence
+        // Storing the crossentropy at each step. Calculate the final perplexity over the whole
+        // document.  We also want to save out the probabilities from the model at each step
+        // And use these to highlight where the speach is very model centric.
+
+
+        (async function main() {
+            const c = console;
+
+            const vocab = await (await fetch(URL_VOCAB)).text();
+            divInit.innerHTML += `<br> Downloaded vocab from ${URL_VOCAB}`;
+            const merges = await (await fetch(URL_MERGES)).text();
+            divInit.innerHTML += `<br> Downloaded merges from ${URL_MERGES}`;
+            const py_code = await (await fetch("http://localhost:8000/encoder.py")).text();
+            // document.querySelector(".js-code").textContent = py_code;
+            divInit.innerHTML += `<br> Downloaded python code from present repo`;
+
+            const pyodide = await loadPyodide({
+                indexURL: "https://cdn.jsdelivr.net/pyodide/v0.19.1/full/"
+            });
+            divInit.innerHTML += `<br> Initialized Pyodide`;
+
+            const session = await ort.InferenceSession.create('http://localhost:8000/model-quantized.onnx');
+            divInit.innerHTML += `<br> Loaded Model`;
+
+
+            // Load in the packages
+            await pyodide.loadPackagesFromImports(py_code);
+            pyodide.runPython(py_code);
+
+            pyodide.globals.set("vocab", vocab);
+            pyodide.globals.set("merges", merges);
+            pyodide.runPython(`encoder = get_encoder_from_strings(vocab, merges)`);
+            divInit.innerHTML += `<br> Initialized tokenizer`;
+            divInit.innerHTML += `<br> Ready to Go!`;
+
+            const compute = async () => {
+                const inputVal = inputField.value;
+
+                // Tokenize the entire input
+                const out = Array.from(pyodide.runPython(`encoder.encode(${JSON.stringify(inputVal)})`));
+
+                // run the model on the input
+                const results = Math.round(await runModel(session, out));
+
+                // Simple heuristic to determine a cutoff for a machine vs human.
+                const species = applyMachineHumanCuttoff(results);
+
+                // Update the output box with the perplexity and suggested entity who wrote it.
+                const msg = `Perplexity score: ${results}. \nThe writing sample was most likely created by ${species}.`;
+                document.querySelector(".text-output").value = msg;
+            };
+
+
+            btnSubmt.addEventListener("click", compute);
+            btnSubmt.click();
+            btnClear.addEventListener("click", () => {
+                inputField.value = "";
+                compute();
+            });
+            inputField.focus();
+            inputField.selectionStart = inputField.selectionEnd = inputField.value.length;
+        })();
+    </script>
+</body>
+
+</html>
