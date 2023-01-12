@@ -164,7 +164,7 @@
             });
             divInit.innerHTML += `<br> Initialized Pyodide`;
 
-            const session = await ort.InferenceSession.create('http://localhost:8000/models/distilgpt.onnx');
+            const session = await ort.InferenceSession.create('https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
             divInit.innerHTML += `<br> Loaded Model`;
 
 
