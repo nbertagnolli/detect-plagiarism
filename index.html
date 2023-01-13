@@ -52,7 +52,7 @@
         const URL_MERGES = "https://huggingface.co/gpt2/resolve/main/merges.txt";
 
         /*
-        * Reshapes arr to multidemensional array of size rows x cols
+        * Reshapes arr to multidimensional array of size rows x cols
         **/
         Array.prototype.reshape = function (rows, cols) {
             var copy = this.slice(0); // Copy all elements.
@@ -85,30 +85,62 @@
         function crossEntropyLoss(predictions, labels) {
             let loss = 0;
             for (let i = 0; i < predictions.length; i++) {
-                loss -= Math.log(predictions[i][labels[i]]);
+                if (labels[i] != -100) {
+                    loss -= Math.log(predictions[i][labels[i]]);
+                }
             }
             return loss / predictions.length;
         }
 
         /**
-         * Calculates the perplexity over the entire dataset
+         * Calculates the perplexity over the entire dataset.  Splits the data into
+         * chunks of size seqLength (1024) that have a 512 sliding window.
          * 
          */
-        async function calculatePerplexity(session, data, stride, seqLength) {
+        async function calculatePerplexity(session, data, stride, max_length) {
+            const seqLength = data.length;
+            let nlls = [];
+            let prev_end_loc = 0;
+            var end_loc = 0;
+            for (let begin_loc = 0; begin_loc < seqLength; begin_loc += stride) {
+                console.log(`${begin_loc} ${seqLength} ${prev_end_loc}`)
+                end_loc = Math.min(begin_loc + max_length, seqLength);
+                let trg_len = end_loc - prev_end_loc; // may be different from stride on last loop
+                let input_ids = data.slice(begin_loc, end_loc);
+                let target_ids = input_ids.slice(); // copy the input_ids array
+                // use the first bit of the sequence for context but ignore it in the calculation.
+                // TODO:: ONLY GO BACK AS FAR AS TRG_LEN AND IF IT OVERFLOWS DO NOTHING!
+                if (trg_len < seqLength) {
+                    for (let i = 0; i < trg_len; i++) {
+                        target_ids[i] = -100;
+                    }
+                }
 
+                // Calculate the loss
+                loss = await runModel(session, input_ids, target_ids) * trg_len;
+                nlls.push(loss);
+                console.log(nlls);
 
+                prev_end_loc = end_loc;
+                if (end_loc === seqLength) {
+                    break;
+                }
+            }
+
+            // Combine the losses into the perplexity score.
+            return Math.exp(nlls.reduce((partialSum, a) => partialSum + a, 0) / end_loc);
         }
 
         /**
          * data is the encoded output.
         */
-        async function runModel(session, data) {
+        async function runModel(session, inputIds, targetIds) {
 
             // Create the input for the model all inputs need to be mapped to BigInts to
             // Accomodate int64 type in ConstantOfShape and input layers.
-            const inputData = data.map(x => BigInt(x));
-            const tensorA = new ort.Tensor('int64', inputData, [1, data.length]);
-            const feeds = { "input_ids": tensorA };
+            const inputData = inputIds.map(x => BigInt(x));
+            const inputTensor = new ort.Tensor('int64', inputData, [1, inputData.length]);
+            const feeds = { "input_ids": inputTensor };
 
             // run the model on the input
             const results = await session.run(feeds);
@@ -124,10 +156,10 @@
             const softmaxPreds = predsArr.map(l => softmax(l));
 
             // Calculate CrossEntropyLoss
-            const loss = crossEntropyLoss(softmaxPreds.slice(0, -1), inputData.slice(1));
+            const loss = crossEntropyLoss(softmaxPreds.slice(0, -1), targetIds.slice(1));
 
             // Calculate CrossEntropyLoss
-            return Math.exp(loss);
+            return loss;
         }
 
         function applyMachineHumanCuttoff(perplexity) {
@@ -136,19 +168,14 @@
             var species = "a MACHINE";
             if (perplexity > 100) {
                 species = "a HUMAN";
-            } else if (perplexity > 70 & perplexity < 100) {
+            } else if (perplexity > 80 & perplexity < 100) {
                 species = "Either it's hard to say";
             }
             return species;
         }
 
-        // TODO:: Define stride, maxLength, sequenceLength, and iterate over the input sequence
-        // Storing the crossentropy at each step. Calculate the final perplexity over the whole
-        // document.  We also want to save out the probabilities from the model at each step
-        // And use these to highlight where the speach is very model centric.
 
-
-        (async function main() {
+        async function main() {
             const c = console;
 
             const vocab = await (await fetch(URL_VOCAB)).text();
@@ -164,7 +191,7 @@
             });
             divInit.innerHTML += `<br> Initialized Pyodide`;
 
-            const session = await ort.InferenceSession.create('https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
+            const session = await ort.InferenceSession.create("http://localhost:8000/models/distilgpt.onnx");//'https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
             divInit.innerHTML += `<br> Loaded Model`;
 
 
@@ -179,13 +206,14 @@
             divInit.innerHTML += `<br> Ready to Go!`;
 
             const compute = async () => {
+                document.querySelector(".text-output").value = "";
                 const inputVal = inputField.value;
 
                 // Tokenize the entire input
                 const out = Array.from(pyodide.runPython(`encoder.encode(${JSON.stringify(inputVal)})`));
 
                 // run the model on the input
-                const results = Math.round(await runModel(session, out));
+                const results = Math.round(await calculatePerplexity(session, out, 512, 1024)); //runModel(session, out, out));//
 
                 // Simple heuristic to determine a cutoff for a machine vs human.
                 const species = applyMachineHumanCuttoff(results);
@@ -204,7 +232,8 @@
             });
             inputField.focus();
             inputField.selectionStart = inputField.selectionEnd = inputField.value.length;
-        })();
+        };
+        main();
     </script>
 </body>
 
