@@ -103,7 +103,6 @@
             let prev_end_loc = 0;
             var end_loc = 0;
             for (let begin_loc = 0; begin_loc < seqLength; begin_loc += stride) {
-                console.log(`${begin_loc} ${seqLength} ${prev_end_loc}`)
                 end_loc = Math.min(begin_loc + max_length, seqLength);
                 let trg_len = end_loc - prev_end_loc; // may be different from stride on last loop
                 let input_ids = data.slice(begin_loc, end_loc);
@@ -119,7 +118,6 @@
                 // Calculate the loss
                 loss = await runModel(session, input_ids, target_ids) * trg_len;
                 nlls.push(loss);
-                console.log(nlls);
 
                 prev_end_loc = end_loc;
                 if (end_loc === seqLength) {
@@ -191,7 +189,7 @@
             });
             divInit.innerHTML += `<br> Initialized Pyodide`;
 
-            const session = await ort.InferenceSession.create("http://localhost:8000/models/distilgpt.onnx");//'https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
+            const session = await ort.InferenceSession.create('https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
             divInit.innerHTML += `<br> Loaded Model`;
 
 
