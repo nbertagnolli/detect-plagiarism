@@ -222,8 +222,9 @@
             });
             divInit.innerHTML += `<br> Initialized Pyodide`;
 
+            divInit.innerHTML += `<br> downloading the model to your browser please be patient...`;
             const session = await ort.InferenceSession.create('https://spotplagiarism.s3.us-west-2.amazonaws.com/distilgpt.onnx');
-            divInit.innerHTML += `<br> Loaded Model`;
+            divInit.innerHTML += `<br> Loaded Model and ready to go!`;
 
 
             // Load in the packages
