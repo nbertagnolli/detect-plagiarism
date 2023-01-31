@@ -195,7 +195,7 @@
             // TODO:: Determine cutoff using generated samples from 20 news corpus.
             // Simple heuristic to determine a cutoff for a machine vs human.
             var species = "a MACHINE";
-            if (perplexity >= 70) {
+            if (perplexity >= 25) {
                 species = "a HUMAN";
             } else if (perplexity > 40 & perplexity < 70) {
                 species = "Either it's hard to say";
